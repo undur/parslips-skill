@@ -31,7 +31,7 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
 | `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs. |
 | `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise. |
-| `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`). |
+| `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
 | `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. |
 | `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. |
@@ -39,10 +39,10 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?` | List configs, or start one with preflight and wait-until-ready. Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
-| `/console` | `app`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. |
+| `/console` | `app`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
 | `/dialogs` | `press?`, `close?`, `title?` | List Eclipse's open modal dialogs; `press=BUTTON` presses one; `close=true` closes the topmost; `title=TEXT` targets one. |
 | `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints. |
-| `/openProject` | `project` (or `all`), `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. |
+| `/openProject` | `project`, `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. No open-everything option, by design. |
 | `/apps` | `name?` | Running apps: port, `runtime`, pid, and the dependencies whose source is open in the workspace. `name` → one app. |
 | `/activity` | `since?`, `clear?` | The dev server's request feed: every handled request with query, status, duration and (capped) response. `since=SEQ` is the poll cursor. |
 | `/watch` | | A live spectator page (HTML) over `/activity`: narrated requests with a running tally. For the human's screen. |
@@ -97,7 +97,9 @@ appears, then use `waitForPort` from then on. Mode defaults to **debug** (hot-co
 needs it).
 
 `/restart` composes stop → wait for actual termination → refresh+rebuild the projects in
-`refresh=` → launch, reporting each stage; all `/launch` parameters pass through.
+`refresh=` → launch, reporting each stage (`stop`, `refresh[]` — one object per project,
+`{"project","refreshed":true,"buildErrors":0}` or the refresher's build report — and
+`launch`); all `/launch` parameters pass through.
 
 ### `/apps` — port, runtime, and readable dependencies
 
@@ -192,8 +194,10 @@ curl -s 'http://localhost:9485/elementApi?element=WOString&raw=true'            
 curl -s 'http://localhost:9485/console?app=MyApp&tail=200'
 ```
 
-First line is a status header (`# config: MyApp - Local  state: terminated  exit: 1`), the
-rest the raw console tail, stack traces included. One buffer per launch config, latest
+First line is a status header (`# config: MyApp - Local  state: terminated  exit: 1  ended: 19:44:21`);
+when a launch of the same project started shortly before this one ended, a second header
+line notes it (`# note: a launch of "MyApp - Dev" (same project) started 3s before this one
+ended - …probably not a crash`). Then the raw console tail, stack traces included. One buffer per launch config, latest
 launch wins, ~400k characters. The only source for startup failures and for an app that is
 up but broken.
 
@@ -223,7 +227,9 @@ added when the UI thread didn't answer within 3s).
 ```
 
 `/problems` is always grouped by project. `count` is the true total at the requested
-severity; the list is capped by `limit` (its size in `shown`). `source` is `parsley`
+severity; the list is capped by `limit` (its size in `shown`). When `project=` names a
+project and `projects` comes back empty, a `reason` says whether it's clean, closed, or
+not in the workspace — don't index `projects[0]` blindly. `source` is `parsley`
 (template validation), `java` (JDT), `stock` (untyped legacy leftovers — purgeable) or
 `other`. Errors only by default; `severity=warning` includes warnings.
 

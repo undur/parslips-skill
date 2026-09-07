@@ -59,10 +59,11 @@ doesn't have to do the close/clean/rebuild dance to find out.
 | Want to know what's running | `GET /status?app=NAME` — one entry **per launch config** of the project; read the one with `running:true` |
 | Need the app's port, framework, or readable dependencies | `GET /apps?name=NAME` — port, `runtime` (`ng`/`wo`, picks the endpoint URL form), and the dependencies whose source is open in the workspace |
 | Need to start the app | `GET /launch?app=NAME&waitForPort=PORT` — blocks until it answers or provably failed |
-| Workspace cold (projects closed) | `GET /launch?config=NAME&open=true&waitForPort=PORT&timeout=300` — opens the project + its workspace dependencies, clean-builds, launches, waits |
+| Workspace cold (projects closed) | `GET /launch?config=NAME&open=true&waitForPort=PORT&timeout=300` — opens the project + its workspace dependencies, clean-builds, launches, waits. Never try to open "everything" |
 | Need a restart (classpath change, broken swap, wedged reload) | `GET /restart?app=NAME&refresh=PROJ1,PROJ2&waitForPort=PORT` — stop, rebuild, launch, wait, in one call |
 | Launch refused for compile errors in a *dependency* | Run the refusal's `hint` (`/refreshProject?project=DEP&clean=true`), then retry — stale build state is the usual cause |
-| Launch/startup failed, app died, or app answers 500 to everything | `GET /console?app=NAME&tail=200` — the Eclipse console, kept after the process dies |
+| Launch/startup failed, app died, or app answers 500 to everything | `GET /console?app=NAME&tail=200` — the Eclipse console, kept after the process dies; read its header first (exit, end time, port-clash note) |
+| Every route 404s (even `/eval`, `/log`) but `/` renders | The wrong adaptor: grep `/console` for `WOAdaptor=` — expected `WOAdaptorJetty`, set by `WOAdaptor` in `~/WebObjects.properties`. Not the app's route table |
 | A call hangs, or a wait ends `blocked by a modal dialog` | `GET /dialogs` — Eclipse's modal dialogs (title, message, buttons); `?press=BUTTON` answers one. **Check this before "fixing" anything** |
 | Suspect compile errors | `GET /problems?project=NAME` — the Problems view as JSON (`count` is the true total; entries carry a `source`) |
 | App slow/frozen only under Eclipse | `GET /breakpoints` — a forgotten breakpoint; `?skipAll=true` disarms them all |
@@ -139,6 +140,20 @@ here), check `/apps?name=APP` first: its `dependencies` are the ones whose sourc
 in the workspace, with their on-disk `path`. If it's listed, read the real source there
 and fix bugs across that boundary. If it isn't, you don't have its source — say so
 plainly rather than guessing at its behavior.
+
+**A clean console and `exit: 1` is usually a port clash, not a crash.** When a second
+instance of the same project starts — typically the developer launching from the Eclipse
+UI, which bypasses `/launch`'s already-running check — the frameworks stop the earlier
+instance cleanly and silently. `/console`'s header says so when it can (`# note: a launch
+of "…" started Ns before this one ended`). Don't hunt for a stack trace that isn't there;
+check `/status` for what's running now, and relaunch if needed.
+
+**Refused for compile errors nobody can find? Retry once.** Right after opening projects,
+m2e is still resolving classpaths and the workspace briefly shows errors that vanish
+seconds later. `/launch` now waits for those jobs and re-checks before refusing, but if a
+refusal still names errors that `/problems` doesn't show, retry once before reaching for
+`ignoreErrors=true`. The refusal always lists the problems it counted — read them; only
+Java errors ever block a launch, never template markers.
 
 **Don't launch Production.** `/launch` prefers a `local`/`dev` config and refuses to guess
 when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name from the list.
