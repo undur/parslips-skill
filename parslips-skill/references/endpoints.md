@@ -36,7 +36,7 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. |
 | `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. |
 | `/elementApi` | `element` (name or comma-list), `project?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
-| `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?` | List configs, or start one with preflight and wait-until-ready. Never raises Eclipse's launch dialogs. |
+| `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
 | `/console` | `app`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
@@ -82,7 +82,17 @@ count (Maven, JUnit etc. are ignored).
   same incremental pre-launch build Eclipse does) → `errorProjects[]` with the first
   problems of each, and a `hint` naming the clean-rebuild call per project;
   `ignoreErrors=true` overrides.
-- config **already running** → use `/restart`, or `allowMultiple=true`.
+- config **already running** → use `/restart`, `port=N` for a second instance alongside,
+  or `allowMultiple=true`.
+- **port held** — the target port is the config's `-WOPort` (default 1200); if something
+  listens there, `{"launched":false,"reason":"port 1200 is in use by \"X\"","holders":[…]}`.
+  `stopOthers=true` stops the holders (registered apps and Eclipse launches it can name),
+  waits for the port to free up, then launches — the response lists `stopped`. `port=N`
+  launches on N instead: a `-WOPort N` program argument is injected into an **unsaved
+  working copy** of the configuration (the saved config is untouched), and `waitForPort`
+  defaults to N. `args=…` appends further program arguments the same way. A holder the
+  dev server can't name (a process outside Eclipse) can't be stopped this way; the refusal
+  says so and suggests `lsof`.
 
 Launches are made with Eclipse's own prompting disabled, so no launch dialog can appear;
 launch failures come back as JSON `error`. Unsaved editor buffers are not saved (the launch

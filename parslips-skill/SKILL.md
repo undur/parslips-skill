@@ -59,6 +59,7 @@ doesn't have to do the close/clean/rebuild dance to find out.
 | Want to know what's running | `GET /status?app=NAME` — one entry **per launch config** of the project; read the one with `running:true` |
 | Need the app's port, framework, or readable dependencies | `GET /apps?name=NAME` — port, `runtime` (`ng`/`wo`, picks the endpoint URL form), and the dependencies whose source is open in the workspace |
 | Need to start the app | `GET /launch?app=NAME&waitForPort=PORT` — blocks until it answers or provably failed |
+| Launch refused: `port N is in use by "X"` | Another app holds the dev port. **Default: take it** — `…&stopOthers=true` stops X and launches yours. Need both running? `…&port=1201` runs yours alongside (any free port; then use that port in `log`/`eval` URLs) |
 | Workspace cold (projects closed) | `GET /launch?config=NAME&open=true&waitForPort=PORT&timeout=300` — opens the project + its workspace dependencies, clean-builds, launches, waits. Never try to open "everything" |
 | Need a restart (classpath change, broken swap, wedged reload) | `GET /restart?app=NAME&refresh=PROJ1,PROJ2&waitForPort=PORT` — stop, rebuild, launch, wait, in one call |
 | Launch refused for compile errors in a *dependency* | Run the refusal's `hint` (`/refreshProject?project=DEP&clean=true`), then retry — stale build state is the usual cause |
@@ -154,6 +155,16 @@ seconds later. `/launch` now waits for those jobs and re-checks before refusing,
 refusal still names errors that `/problems` doesn't show, retry once before reaching for
 `ignoreErrors=true`. The refusal always lists the problems it counted — read them; only
 Java errors ever block a launch, never template markers.
+
+**One dev port, and the app you're working on gets it.** Apps here share port 1200 by
+convention, so starting yours while another runs is a clash — one `/launch` now refuses
+explicitly, naming the holder. The rule in this shop: **stop the other app and start
+yours** (`stopOthers=true`); the developer expects that, and running several apps is
+fine but not the norm. Only when you genuinely need both up — testing an integration,
+say — run yours on another port with `port=N` (the argument is injected into an unsaved
+copy of the launch config; nothing is edited), and remember that port when you build the
+app's `log`/`eval`/`problems` URLs. Never resolve a clash by hand-killing processes when
+`stopOthers` will do it cleanly.
 
 **Don't launch Production.** `/launch` prefers a `local`/`dev` config and refuses to guess
 when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name from the list.
