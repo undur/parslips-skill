@@ -42,6 +42,8 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/console` | `app`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
 | `/dialogs` | `press?`, `close?`, `title?` | List Eclipse's open modal dialogs; `press=BUTTON` presses one; `close=true` closes the topmost; `title=TEXT` targets one. |
 | `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints. |
+| `/createProject` | `name`, `template`, `package?`, `location?`, `launch?` (+ `/launch` params) | Generate a project from a bundled template (`ng-objects-app`, `wonder-slim-app`, `maven`), import it through m2e, make an application launchable, optionally launch it. |
+| `/importProject` | `path` | Import an existing Maven project directory into the workspace through m2e; an application gets a launch configuration if it has none. |
 | `/openProject` | `project`, `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. No open-everything option, by design. |
 | `/apps` | `name?` | Running apps: port, `runtime`, pid, and the dependencies whose source is open in the workspace. `name` → one app. |
 | `/activity` | `since?`, `clear?` | The dev server's request feed: every handled request with query, status, duration and (capped) response. `since=SEQ` is the poll cursor. |
@@ -110,6 +112,39 @@ needs it).
 `refresh=` → launch, reporting each stage (`stop`, `refresh[]` — one object per project,
 `{"project","refreshed":true,"buildErrors":0}` or the refresher's build report — and
 `launch`); all `/launch` parameters pass through.
+
+### `/createProject` and `/importProject`
+
+```bash
+curl -s --max-time 300 'http://localhost:9485/createProject?name=my-app&template=ng-objects-app&location=~/git&launch=true&waitForPort=1200&stopOthers=true'
+curl -s --max-time 300 'http://localhost:9485/createProject?name=my-logic&template=maven&package=is.example.logic'
+curl -s --max-time 300 'http://localhost:9485/importProject?path=~/git/some-existing-project'
+```
+
+```json
+{ "created":true, "project":"my-app", "template":"ng-objects-app", "path":"/Users/you/git/my-app",
+  "package":"my.app", "entryFile":"src/main/resources/ng/app/components/Main.html",
+  "compileErrors":0, "mainClass":"my.app.Application", "launchConfig":"my-app",
+  "launch":{ "launched":true, "ready":true, "readyPort":1200, … } }
+```
+
+- `template`: `ng-objects-app` (standalone templates, `project.base=ng`), `wonder-slim-app`
+  (bundle templates, `project.base=wo`), or `maven` (a plain jar project — pom, `src/main/java`,
+  `src/test/java`, JUnit — for supporting logic; no launch config). `ng`/`wo` are accepted.
+- `package` defaults to one derived from the name (`my-cool-app` → `my.cool.app`); it is also
+  the Maven groupId. `location` is the **parent** directory (`~` is expanded; default: the
+  Eclipse workspace directory).
+- The call returns once m2e has imported the project and the first build has settled, so
+  `compileErrors` (with `problems` when non-zero) is trustworthy. First use of a template can
+  take a while: Maven downloads the framework's dependencies. Use a generous timeout.
+- Refusals are `{"created":false,"reason":…}`: invalid name or package, a workspace project
+  of that name, a non-empty target directory (use `/importProject`), a missing parent.
+- Without `launch=true` the response carries a `hint` with the `/launch` call. With it, every
+  `/launch` parameter passes through and the launch result is embedded as `launch`.
+- `/importProject` answers `{"imported":true,"project":…,"compileErrors":N}` plus
+  `mainClass`/`launchConfig` for an application (`principalClass` in `build.properties`);
+  a directory already in the workspace is reported (`imported:false`, with the project name
+  and whether it's closed) rather than imported twice. Only Maven projects (a `pom.xml`).
 
 ### `/apps` — port, runtime, and readable dependencies
 

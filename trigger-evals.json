@@ -110,5 +110,13 @@
   {
     "query": "summarize what the WOPopUpButton class does from its javadoc, no need to run anything",
     "should_trigger": false
+  },
+  {
+    "query": "create a new ng-objects app called recipe-box and get it running so we can start building",
+    "should_trigger": true
+  },
+  {
+    "query": "I generated a wonder project under ~/git/inventory but Eclipse doesn't see it yet, can you bring it in",
+    "should_trigger": true
   }
 ]

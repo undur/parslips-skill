@@ -6,7 +6,8 @@ description: >-
   after editing any .java, .html or .wod file on disk (Eclipse doesn't notice disk
   edits, so nothing takes effect until you refresh through this skill); when the
   browser still shows old behavior after your edit; to validate a template for errors
-  without rendering it; to start, stop or restart the app; to find out what is running
+  without rendering it; to create a new project or import one into Eclipse; to start,
+  stop or restart the app; to find out what is running
   and on which port; to read what the app logged, or what it printed while starting;
   to check whether a Java change hot-swapped or needs a restart; to look up an
   element's real bindings ("what can I bind on WOPopUpButton?"); to run a Java snippet
@@ -58,6 +59,8 @@ doesn't have to do the close/clean/rebuild dance to find out.
 | Edited a template (`.html`/`.wod`) | …then `GET /validate?component=NAME` — refresh makes it take effect, validate catches mistakes; they're separate |
 | Want to know what's running | `GET /status?app=NAME` — one entry **per launch config** of the project; read the one with `running:true` |
 | Need the app's port, framework, or readable dependencies | `GET /apps?name=NAME` — port, `runtime` (`ng`/`wo`, picks the endpoint URL form), and the dependencies whose source is open in the workspace |
+| Need a **new** project | `GET /createProject?name=NAME&template=ng-objects-app` (or `wonder-slim-app`, or `maven` for a plain library) — generates it, imports it into Eclipse, makes it launchable; add `&launch=true&waitForPort=1200` to end with a running app. **Never hand-write a project skeleton** |
+| Have a project on disk that Eclipse doesn't know | `GET /importProject?path=/abs/dir` — m2e import, no wizard; an application gets a launch config |
 | Need to start the app | `GET /launch?app=NAME&waitForPort=PORT` — blocks until it answers or provably failed |
 | Launch refused: `port N is in use by "X"` | Another app holds the dev port. **Default: take it** — `…&stopOthers=true` stops X and launches yours. Need both running? `…&port=1201` runs yours alongside (any free port; then use that port in `log`/`eval` URLs) |
 | Workspace cold (projects closed) | `GET /launch?config=NAME&open=true&waitForPort=PORT&timeout=300` — opens the project + its workspace dependencies, clean-builds, launches, waits. Never try to open "everything" |
@@ -165,6 +168,15 @@ say — run yours on another port with `port=N` (the argument is injected into a
 copy of the launch config; nothing is edited), and remember that port when you build the
 app's `log`/`eval`/`problems` URLs. Never resolve a clash by hand-killing processes when
 `stopOthers` will do it cleanly.
+
+**Start new projects through the plugin, not by hand.** `/createProject` produces the
+house layout (pom, `build.properties`, Application/Session/DirectAction/Main, the right
+resource folders for the runtime), imports it through m2e so the classpath is real, and
+creates the launch configuration. A skeleton you write yourself is a project the developer
+must then import, fix up and wire a launch config for. `location=` is the *parent*
+directory (default: the Eclipse workspace directory) — ask where the developer keeps
+projects if it isn't obvious. It refuses to overwrite; an existing directory goes through
+`/importProject` instead.
 
 **Don't launch Production.** `/launch` prefers a `local`/`dev` config and refuses to guess
 when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name from the list.
