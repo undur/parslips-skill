@@ -40,6 +40,12 @@ With it, an agent editing files on disk can:
   (`…/App.woa/problems`)
 - **See and answer Eclipse's modal dialogs** (`/dialogs`) — the stop-the-world
   prompts an agent otherwise can't see, and launches that never raise them
+- **Start a project from nothing** — `/createProject` generates an ng-objects app, a
+  wonder-slim app or a plain Maven library from the bundled templates, imports it into
+  Eclipse, makes it launchable and can launch it, all in one call; `/importProject`
+  brings an existing project on disk into the workspace
+- **Decide port clashes out loud** — a held dev port is a refusal naming the holder;
+  `stopOthers=true` takes it, `port=N` runs alongside
 - **Read (or watch) everything the agent asked the dev server to do** — `/activity`
   as JSON for the next session, `/watch` as a live narrated page for you
 - Know **what hot-swaps vs. what needs an app restart** — the timing traps
@@ -51,6 +57,14 @@ without these hooks, an agent's disk edits silently do nothing. The dev server i
 self-describing: `GET http://localhost:9485/` returns a JSON index of every
 endpoint, and the skill teaches the agent to trust that index over its own docs
 (older plugin builds expose a smaller endpoint set; the skill degrades gracefully).
+
+## Versions
+
+The skill is released under the **same version number as the Parslips plugin** it
+documents: skill `v5.7.0` describes the dev server of plugin 5.7.0. The two travel
+together — when the plugin gains or changes an endpoint, the skill release of the same
+number teaches it. If your plugin is older than your skill, the dev server's own index
+(`GET http://localhost:9485/`) is the authority on what your build offers.
 
 ## Install (personal — all your projects)
 

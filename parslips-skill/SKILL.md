@@ -178,6 +178,21 @@ directory (default: the Eclipse workspace directory) — ask where the developer
 projects if it isn't obvious. It refuses to overwrite; an existing directory goes through
 `/importProject` instead.
 
+**A new app may be blind on the app side.** A generated project pins the latest *released*
+framework, and a release can predate the app-side dev endpoints — ng-appserver 0.1.1 does:
+`…/ng/dev/log`, `eval` and `problems` answer 404, and the app never registers, so `/apps`
+doesn't list it. That isn't a broken app. Read its output through `/console?app=NAME`, its
+state through `/status?app=NAME`, and use the port you launched on (1200 unless you passed
+`port=`). Everything on the Eclipse side — refresh, validate, `/elementApi`, hot swap —
+works regardless.
+
+**Supporting logic goes in its own project, wired through the workspace.** Create the
+library with `template=maven`, then add it to the app's pom as `groupId` = the library's
+package, `artifactId` = its name, `version` `1.0.0-SNAPSHOT`. Refresh the library first,
+then the app; m2e resolves the dependency inside the workspace (no `mvn install`). Adding
+the dependency is a classpath change, so that one time you `/restart`. After that, edits in
+either project hot-swap — including new methods in the library.
+
 **Don't launch Production.** `/launch` prefers a `local`/`dev` config and refuses to guess
 when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name from the list.
 
