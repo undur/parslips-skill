@@ -35,7 +35,7 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
 | `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. |
 | `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. |
-| `/elementApi` | `element` (name or comma-list), `project?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
+| `/elementApi` | `element` (name or comma-list), `project?`, `runtime?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
@@ -230,6 +230,13 @@ curl -s 'http://localhost:9485/elementApi?element=WOString&raw=true'            
 - Per binding: `pull`/`push` arrays of `{type, interpretation?}`; `direction` is
   `pull`/`push`/`both`/`none`; plus `required`, `default`, `defaults`, `deprecated`.
   Constraints carry the generated human `message`.
+- A **hybrid project** (a WO app that also serves ng components) holds templates of both
+  runtimes; a template under `ng/<namespace>/components/` is an ng template, the rest are WO.
+  `/elementApi` answers for the project's own runtime unless you pass `runtime=ng` or
+  `runtime=wo` — use the runtime of the template you're editing.
+- `debug=true` (with `project`) adds a `lookup` block: the element class the name resolves to,
+  the runtime's root class, and each search hit with whether it extends the root. Use it when a
+  template says "the class for X is missing" but `/elementApi` resolves X fine.
 - In ng-objects projects the definitions are ng-objects' own (`NGString`, `NGCheckbox`…),
   never the WebObjects element of the same name.
 
