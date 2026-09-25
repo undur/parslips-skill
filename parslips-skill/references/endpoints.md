@@ -224,7 +224,7 @@ curl -s 'http://localhost:9485/elementApi?element=WOString&raw=true'            
 ```
 
 - Names resolve as a template resolves them: the project's tag aliases
-  (`parsley-tag-aliases.properties`, recursive) and the classic shortcuts. `resolved` is
+  (`parsley-tag-aliases.properties` in WO projects, `ng-tag-aliases.properties` in ng projects; recursive) and the classic shortcuts. `resolved` is
   what the name became; `kind` is `apiext` (rich), `api` (legacy) or `none` (no definition,
   `api` null).
 - Per binding: `pull`/`push` arrays of `{type, interpretation?}`; `direction` is
