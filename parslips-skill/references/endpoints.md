@@ -8,6 +8,16 @@ This is the reference: endpoints, parameters, response shapes, runtime differenc
 setup. The doctrine — what to do when, and the traps — is in `SKILL.md`; it isn't
 repeated here.
 
+## Contents
+- Runtimes — what differs between ng-objects and WebObjects
+- Dev server — the endpoint table, then one section per endpoint group:
+  `/launch` `/stop` `/restart` · `/createProject` `/importProject` · `/apps` ·
+  `/refreshProject` · `/validate` · `/elementApi` · `/console` · `/status` `/problems` ·
+  `/revalidate` `/purgeMarkers` · `/dialogs` · `/breakpoints` · `/activity` `/watch`
+- Log endpoint, Eval endpoint, Runtime-problems endpoint — the app-side endpoints
+- Template conventions
+- Setup (for the developer)
+
 ## Runtimes
 
 The hooks work the same for both runtimes; two things differ:
@@ -186,14 +196,14 @@ settles. Returns `ok`, or a JSON report:
 ### `/validate`
 
 ```bash
-curl -s 'http://localhost:9485/validate?component=ASISearchPage&project=MyApp'
+curl -s 'http://localhost:9485/validate?component=SearchPage&project=MyApp'
 ```
 
 ```json
-{ "component":"ASISearchPage", "found":true,
-  "files":["/MyApp/…/ASISearchPage.html"],
+{ "component":"SearchPage", "found":true,
+  "files":["/MyApp/…/SearchPage.html"],
   "problems":[ {"severity":"error","line":17,"charStart":420,"charEnd":448,
-                "message":"…","file":"/MyApp/…/ASISearchPage.html"} ] }
+                "message":"…","file":"/MyApp/…/SearchPage.html"} ] }
 ```
 
 - Refreshes the component's files from disk first, so it sees your edit without a prior
@@ -399,7 +409,7 @@ request renders the tag.
 
 1. **Install the Parslips plugin** — Eclipse → *Help → Install New Software…*, add
    `https://undur.github.io/parslips/repository/`, pick the **Parslips** feature
-   (currently listed as "Parsley Template Editor"), restart. Coexists with WOLips; set
+   (listed as "Parsley Template Editor"), restart. Coexists with WOLips; set
    `project.base=wo` so Parslips wins on WO projects.
 2. **Run the app from Eclipse in debug mode** (enables hot-code-replace).
 3. **Recommended: enhanced reload** — run on **JBR** with

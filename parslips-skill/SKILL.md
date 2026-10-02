@@ -1,20 +1,15 @@
 ---
 name: parslips-skill
 description: >-
-  Use this skill in WebObjects, ng-objects, Wonder or Parsley projects whenever the
-  running app has to see a change, or you need to see the running app. That means:
-  after editing any .java, .html or .wod file on disk (Eclipse doesn't notice disk
-  edits, so nothing takes effect until you refresh through this skill); when the
-  browser still shows old behavior after your edit; to validate a template for errors
-  without rendering it; to create a new project or import one into Eclipse; to start,
-  stop or restart the app; to find out what is running
-  and on which port; to read what the app logged, or what it printed while starting;
-  to check whether a Java change hot-swapped or needs a restart; to look up an
-  element's real bindings ("what can I bind on WOPopUpButton?"); to run a Java snippet
-  inside the live app; or to learn which dependencies have source open in the
-  workspace. It drives the Parslips Eclipse plugin's dev server (HTTP on
-  localhost:9485) and the app's own dev endpoints (log, eval, problems). Triggers on
-  projects with .wo component bundles, <wo:...> or <webobject> template tags,
+  Drives the Parslips Eclipse plugin's dev server (localhost:9485) and a running
+  WebObjects or ng-objects app's own dev endpoints, so disk edits take effect and the
+  app can be observed. Use after editing any .java, .html or .wod file (Eclipse doesn't
+  notice disk edits until refreshed); when the app still shows old behavior; to
+  validate a template without rendering it; to create or import a project; to start,
+  stop or restart an app; to see what is running and on which port; to read the app's
+  log or startup console; to check whether a change hot-swapped; to look up an
+  element's bindings ("what can I bind on WOPopUpButton?"); or to run Java inside the
+  live app. Applies to projects with .wo bundles, <wo:...> or <webobject> tags,
   build.properties with project.base, WOComponent/NGComponent classes, or
   wonder-slim/ERExtensions.
 ---
@@ -41,14 +36,18 @@ nothing has changed until you have.
 
 **Hand the workspace back settled.** The moment you stop, the human will open a
 component, run the app, or launch it from Eclipse — and they assume the workspace
-matches the disk. So before you finish a task, pause for their input, or report back,
-run `/refreshProject?project=NAME` for **every project you touched** — a dependency you
-edited counts as much as the app; refreshing only the app leaves the dependency unbuilt —
-and confirm each answers `ok`. Then `/problems?project=NAME` on those projects. Never
-hand back a mid-state: unrefreshed edits, half-copied resources, an unbuilt change, or
-errors you meant to fix later. If you stopped an app that was running when you started,
-start it again. If you must leave something broken, say so in your report, so the human
-doesn't have to do the close/clean/rebuild dance to find out.
+matches the disk. Never hand back a mid-state: unrefreshed edits, half-copied resources,
+an unbuilt change, or errors you meant to fix later. Before you finish a task, pause for
+their input, or report back, copy this checklist into your response and tick it off:
+
+```
+Handing back:
+- [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered ok
+- [ ] /problems?project=NAME on each of them — no errors I introduced
+- [ ] any template I edited validates clean (/validate?component=NAME)
+- [ ] any app that was running when I started is running again
+- [ ] anything I had to leave broken is named in my report
+```
 
 ## When to do what
 
@@ -179,8 +178,8 @@ projects if it isn't obvious. It refuses to overwrite; an existing directory goe
 `/importProject` instead.
 
 **A new app may be blind on the app side.** A generated project pins the latest *released*
-framework, and a release can predate the app-side dev endpoints — ng-appserver 0.1.1 does:
-`…/ng/dev/log`, `eval` and `problems` answer 404, and the app never registers, so `/apps`
+framework, and that release can predate the app-side dev endpoints: then
+`…/ng/dev/log` (or `…/<App>.woa/log`), `eval` and `problems` answer 404, and the app never registers, so `/apps`
 doesn't list it. That isn't a broken app. Read its output through `/console?app=NAME`, its
 state through `/status?app=NAME`, and use the port you launched on (1200 unless you passed
 `port=`). Everything on the Eclipse side — refresh, validate, `/elementApi`, hot swap —
@@ -252,6 +251,6 @@ curl -s 'http://localhost:9485/problems?project=MyApp'                          
 
 ## More detail
 
-`references/endpoints.md` is the reference: every endpoint with parameters and response
+[`references/endpoints.md`](references/endpoints.md) is the reference: every endpoint with parameters and response
 shapes, the runtime endpoints (`log`, `eval`, `problems`) in full, ng-vs-WO differences,
 template conventions, and the developer-side setup (plugin, JBR + HotswapAgent, `/watch`).

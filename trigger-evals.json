@@ -4,11 +4,11 @@
     "should_trigger": true
   },
   {
-    "query": "edited the appendToResponse method in SMWorkListPage.java — the page still shows the old behavior in the browser though",
+    "query": "edited the appendToResponse method in WorkListPage.java — the page still shows the old behavior in the browser though",
     "should_trigger": true
   },
   {
-    "query": "can you check whether ASISearchPage.html has any template errors before I reload the page?",
+    "query": "can you check whether SearchPage.html has any template errors before I reload the page?",
     "should_trigger": true
   },
   {
