@@ -24,7 +24,7 @@ hooks that let you — an agent editing files on disk — make changes take effe
 templates, launch and observe the app, and read its output, without the human relaying
 anything by hand.
 
-## The two rules
+## The rules
 
 Eclipse only tracks edits made through its own editor. A file you change on disk sits
 unnoticed: no recompile, no resource copy, and the running app keeps its old state. From
@@ -36,6 +36,14 @@ app reads them from the output folder (`target/classes`), which Eclipse only ref
 when it notices a change — and a disk edit is never noticed until you refresh. Assume
 nothing has changed until you have.
 
+**Work where Eclipse looks.** The dev server knows only the projects in the Eclipse
+workspace. Edit a copy anywhere else (a git worktree, a second clone) and every call still
+answers `ok` while nothing you did takes effect: refresh, validation and the running app all
+use the workspace's checkout, and the developer can't follow your work in Eclipse. Before
+your first edit, `GET /where?path=$PWD`; it must say `inWorkspace:true`. For a worktree it
+names the directory to work in instead (`workIn`). If a task really needs an isolated branch,
+ask the human how they want it done; don't quietly work elsewhere.
+
 **Hand the workspace back settled.** The moment you stop, the human will open a
 component, run the app, or launch it from Eclipse — and they assume the workspace
 matches the disk. Never hand back a mid-state: unrefreshed edits, half-copied resources,
@@ -44,6 +52,7 @@ their input, or report back, copy this checklist into your response and tick it 
 
 ```
 Handing back:
+- [ ] every edit I made is in a workspace project (/where said inWorkspace:true), not a worktree or copy
 - [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered `ok` (anything else: not done)
 - [ ] /problems?project=NAME on each of them — no errors I introduced
 - [ ] any template I edited validates clean (/validate?component=NAME)
@@ -55,8 +64,9 @@ Handing back:
 
 | You just… | Do this |
 |---|---|
+| About to edit, in a directory you haven't checked | `GET /where?path=$PWD` — `inWorkspace:true`, or edit where `workIn` says (a worktree is invisible to Eclipse) |
 | Edited **anything** in the project | `GET /refreshProject?project=NAME` — always, first. Check the response (below). |
-| Finished, pausing, or reporting back | `GET /refreshProject?project=NAME` for **every** project you touched, each answering `ok`, then `GET /problems?project=NAME` on them — leave the workspace settled for the human (rule two) |
+| Finished, pausing, or reporting back | `GET /refreshProject?project=NAME` for **every** project you touched, each answering `ok`, then `GET /problems?project=NAME` on them — leave the workspace settled for the human (see "Hand the workspace back settled") |
 | Edited a template (`.html`/`.wod`) | …then `GET /validate?component=NAME` — refresh makes it take effect, validate catches mistakes; they're separate |
 | Want to know what's running | `GET /status?app=NAME` — one entry **per launch config** of the project; read the one with `running:true` |
 | Need the app's port, framework, or readable dependencies | `GET /apps?name=NAME` — port, `runtime` (`ng`/`wo`, picks the endpoint URL form), and the dependencies whose source is open in the workspace |

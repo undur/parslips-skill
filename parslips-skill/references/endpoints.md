@@ -47,6 +47,7 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 | Endpoint | Params | Does |
 |---|---|---|
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
+| `/where` | `path` | Whether a directory is in an Eclipse workspace project: `inWorkspace`, `project`, `projectPath`, `relative`; or a `reason`. For a git worktree of a checkout Eclipse has, `workIn` names the directory to edit instead. Call it with your working directory before the first edit. |
 | `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs, and per app `suspendedThreads` when the debugger stopped any (see `/threads`). A name nothing matches comes with a `reason`. |
 | `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise; `refreshed:false` + `reason` for an unknown or closed project (the closed case's `hint` is the `/openProject` call). Only `ok` means it worked. |
 | `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
