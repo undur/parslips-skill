@@ -46,6 +46,24 @@ With it, an agent editing files on disk can:
   brings an existing project on disk into the workspace
 - **Decide port clashes out loud** — a held dev port is a refusal naming the holder;
   `stopOthers=true` takes it, `port=N` runs alongside
+- **Understand a project's own code the way the editor does** — `/context` loads
+  everything about a component before an edit (its files, what it takes, its problems,
+  the elements it uses, who uses it); `/keypath` resolves a keypath hop by hop with
+  types and declarations; `/find` and `/callers` locate a key's declaration and every
+  use — including a model class's key reached through template keypaths — matched by
+  resolution, not text
+- **Refactor and fix without hand-editing across files** — `/rename` renames a
+  component, a key (a component's or a model class's) or a WOD element across Java,
+  HTML, WOD and every call site through the editor's refactorings, with a preview and
+  Eclipse's undo; `/quickfix` applies the editor's fixes (did-you-mean, create the
+  missing key or action)
+- **Never hang on the debugger** — apps run under Eclipse's debugger, where a compile
+  error or an uncaught exception can silently stop a thread; `/threads` shows what
+  stopped and why, apps launched through the dev server fail fast instead of hanging,
+  and the skill puts a timeout on every request
+- **Work where Eclipse looks** — `/where` tells an agent whether its directory is one
+  Eclipse sees (a git worktree isn't, and every call there "succeeds" while nothing
+  takes effect)
 - **Read (or watch) everything the agent asked the dev server to do** — `/activity`
   as JSON for the next session, `/watch` as a live narrated page for you
 - Know **what hot-swaps vs. what needs an app restart** — the timing traps
