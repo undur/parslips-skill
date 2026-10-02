@@ -244,11 +244,12 @@ the parent after rendering, so `<wo:Table rows="$league.standings">` fails at re
 `standings` has no setter (the validator warns). The editor reads the `valueForBinding`
 names as the component's API, and `/rename` renames them with the key.
 
-**A component created while the app runs renders as nothing until a restart.** Its class
-hot-loads, but the running app doesn't find the new component's template: the tag renders
-empty, with no error box, no runtime problem and no log line. After adding a component (a
-new `.wo` or `.html` with its class), `/restart` before exercising it. (A component renamed
-through `/rename` keeps working.)
+**On wonder-slim 8.0.16 or older, a component created while the app runs renders as
+nothing until a restart.** Its class hot-loads, but the running app doesn't find the new
+template: the tag renders empty, with no error box, no runtime problem and no log line.
+8.0.17 finds it. On older versions, `/restart` after adding a component (a new `.wo` or
+`.html` with its class). Either way, a component whose template doesn't exist yet renders
+empty, so write the template along with the class.
 
 **Name the project for component calls.** Every app has a `Main`, so `component=Main`
 without `project=` is refused with the list of projects that have one. Pass
