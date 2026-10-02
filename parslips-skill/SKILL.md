@@ -244,6 +244,21 @@ the parent after rendering, so `<wo:Table rows="$league.standings">` fails at re
 `standings` has no setter (the validator warns). The editor reads the `valueForBinding`
 names as the component's API, and `/rename` renames them with the key.
 
+**A component created while the app runs renders as nothing until a restart.** Its class
+hot-loads, but the running app doesn't find the new component's template: the tag renders
+empty, with no error box, no runtime problem and no log line. After adding a component (a
+new `.wo` or `.html` with its class), `/restart` before exercising it. (A component renamed
+through `/rename` keeps working.)
+
+**Name the project for component calls.** Every app has a `Main`, so `component=Main`
+without `project=` is refused with the list of projects that have one. Pass
+`project=NAME` on `/context`, `/keypath`, `/find`, `/validate` and the rest whenever the
+workspace holds more than one app.
+
+**A compile error logs as `ERXLowMemoryHandler … java.lang.Error`.** wonder-slim logs every
+`java.lang.Error` through its low-memory handler; when the message is "Unresolved
+compilation problem", it's your code, not memory. Fix it and refresh; no restart needed.
+
 **Framework source on disk may not be the version the app runs.** A checkout of wonder-slim
 or ng-objects is usually ahead of the release the app's pom pins. Before using an API you
 read there, check the dependency's version in the pom; when they differ, the jar is the

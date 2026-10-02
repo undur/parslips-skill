@@ -361,6 +361,10 @@ curl -s 'http://localhost:9485/rename?kind=element&component=Badge&from=Caption&
   accessor at all.
 - **`kind=key&class=pkg.Team`** renames a model class's key: its members (Java follows) and
   every template keypath segment reaching it, in the class's project and its dependents.
+- Renaming a method under a running app: the app keeps calling it by its old name from
+  lambdas and method references it already ran (`Comparator.comparingInt(Player::goals)`),
+  so the next request can fail with `NoSuchMethodError`. The answer's `note` says so; the
+  cure is `/restart`.
 - **`kind=element`** renames `<webobject name="X">` and its `X : Type {}` in a bundle template.
 - All conditions are checked before anything changes; a refusal (`reason`) touched nothing.
   `preview=true` returns `changes` without making them (a template can appear once per member
@@ -537,6 +541,13 @@ curl -s '.../eval?reset=true&snippet=…'      # discard the persistent session 
   imports: `java.util.*`, `java.util.stream.*`, `java.time.*`.
 - `System.out`/`err` go to the app console — read them via the log endpoint.
 - A non-terminating snippet hangs its request; a wedged eval needs an app restart.
+
+**Render a page without a browser** (WebObjects) — to check what a template outputs:
+
+```java
+var page = com.webobjects.appserver.WOApplication.application().pageWithName("TeamList", er.extensions.appserver.ERXWOContext.newContext());
+page.generateResponse().contentString().contains("expected text")
+```
 
 ## Runtime-problems endpoint
 
