@@ -14,7 +14,7 @@ repeated here.
   `/launch` `/stop` `/restart` · `/createProject` `/importProject` · `/apps` ·
   `/refreshProject` · `/validate` · `/elementApi` `/elementRegistry` · `/context`
   `/componentApi` `/keypath` `/find` `/callers` · `/rename` `/quickfix` · `/console` · `/status` `/problems` ·
-  `/revalidate` `/purgeMarkers` · `/dialogs` · `/breakpoints` · `/activity` `/watch`
+  `/revalidate` `/purgeMarkers` · `/threads` · `/dialogs` · `/breakpoints` · `/activity` `/watch`
 - Log endpoint, Eval endpoint, Runtime-problems endpoint — the app-side endpoints
 - Template conventions
 - Setup (for the developer)
@@ -47,7 +47,7 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 | Endpoint | Params | Does |
 |---|---|---|
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
-| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs. A name nothing matches comes with a `reason`. |
+| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs, and per app `suspendedThreads` when the debugger stopped any (see `/threads`). A name nothing matches comes with a `reason`. |
 | `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise; `refreshed:false` + `reason` for an unknown or closed project (the closed case's `hint` is the `/openProject` call). Only `ok` means it worked. |
 | `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
@@ -58,14 +58,15 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 | `/context` | `component`, `project?` | Everything before editing a component, in one call: files, class, API, current problems, the elements its template uses (with their bindings), and its callers. |
 | `/componentApi` | `component`, `project?` | What one of the project's own components accepts: its `.apiext`/`.api`, else its settable keys with types and declarations. |
 | `/keypath` | `component`, `keypath`, `project?` | Resolve a keypath hop by hop: each segment's type and declaration; for a broken one, the failing key, the type it was looked up on, and suggestions. |
-| `/find` | `component`, `key`, `project?` | A key's declaration, its uses in the component's templates, and its Java references. |
+| `/find` | `component`\|`class`, `key`, `project?` | A key's declaration, its uses in templates, and its Java references. `class=` (a model class): every template keypath segment, in any component, that resolves to the key. |
 | `/callers` | `component`, `project?` | Every template that uses the component (`<wo:Name>`, `X : Name {}`), in its project and the projects depending on it. |
-| `/rename` | `kind=component\|key\|element`, `component`, `to`, `from` (key/element), `preview?` | Rename across Java, HTML and WOD atomically through the editor's refactorings; `preview=true` lists the changes only. Undoable from Eclipse's Edit menu. |
+| `/rename` | `kind=component\|key\|element`, `component` (or `class` for a key), `to`, `from` (key/element), `preview?` | Rename across Java, HTML and WOD atomically through the editor's refactorings; `preview=true` lists the changes only. Undoable from Eclipse's Edit menu. |
 | `/quickfix` | `component`, `problem?`, `fix?`, `type?` | List a component's template problems with the editor's fixes; `problem=ID&fix=ID` applies one and answers with what's left. |
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`/`config`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
-| `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
+| `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | refresh+rebuild named projects → stop → wait for termination → launch. Per-stage results. With compile errors it refuses (`restarted:false`) before stopping, leaving the app up. |
 | `/console` | `app`/`config`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. Nothing launched under that name: `captured:false` + `reason`. |
+| `/threads` | `resume?` | Threads the debugger suspended (breakpoint, exception, compile error, uncaught exception) per app, with `reason` and `at` (class, method, line); `resume=all` (or an app name) resumes. `autoResumed` lists recent suspensions resumed automatically in dev-server launches. |
 | `/dialogs` | `press?`, `close?`, `title?` | List Eclipse's open modal dialogs; `press=BUTTON` presses one; `close=true` closes the topmost; `title=TEXT` targets one. |
 | `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints (any other value is an `error`). |
 | `/createProject` | `name`, `template`, `package?`, `location?`, `launch?` (+ `/launch` params) | Generate a project from a bundled template (`ng-objects-app`, `wonder-slim-app`, `maven`), import it through m2e, make an application launchable, optionally launch it. |
@@ -313,7 +314,8 @@ curl -s 'http://localhost:9485/callers?component=Badge'               # who uses
 
 - **`/componentApi`**: `source` is `apiext`/`api` (then `api` is the full API, as
   `/elementApi` renders it) or `keys`: the component declares nothing, so its bindings are its
-  settable keys (setters and fields declared in the project), each with `type` and `at`.
+  settable keys (setters and fields declared in the project, when it synchronizes) and the
+  names it reads with `valueForBinding("x")` and kin (`via: valueForBinding`), each with `at`.
 - **`/keypath`**: `segments` has one entry per resolved key (`key`, `type`, `declaredIn`,
   `via`, `at`; framework members have `at.binary` instead of a file). `valid:false` adds
   `invalidKey`, `on` (the type it was looked up on) and `suggestions`. A key reached through
@@ -323,6 +325,11 @@ curl -s 'http://localhost:9485/callers?component=Badge'               # who uses
 - **`/find`**: `declaration` (`file`, `line`, `member`, `via`, `type`), `templates` (uses in
   the component's own HTML/WOD) and `java` (JDT references). Every location has `file`,
   `line`, `column` and `text`, the source line. One key at a time; for a keypath, `/keypath`.
+  With `class=leaguedesk.model.Team` instead of `component=` it finds a model class's key:
+  `declarations` (every member implementing it), and `templates` with every keypath segment
+  in any component that resolves to it — by resolution, so `$team.name` counts and
+  `$team.captain.name` (a Player's) doesn't. A simple class name works when it's unique;
+  otherwise the refusal lists the candidates.
 - **`/callers`**: `callers[]` locations with the calling `component`; `components` is the
   distinct list. Covers the component's project and every project that depends on it.
 
@@ -348,6 +355,11 @@ curl -s 'http://localhost:9485/rename?kind=element&component=Badge&from=Caption&
   `label=…`). A private field that isn't a key keeps its name.
 - **`kind=component`** renames the class (every Java reference), its `.wo` folder or `.html`
   and files, and every `<wo:Name>`/`X : Name {}` in its project and dependent projects.
+- A non-synchronizing component's bindings are the names it reads with `valueForBinding("x")`
+  and kin: `kind=key` renames those literals too, and works for a binding that has no
+  accessor at all.
+- **`kind=key&class=pkg.Team`** renames a model class's key: its members (Java follows) and
+  every template keypath segment reaching it, in the class's project and its dependents.
 - **`kind=element`** renames `<webobject name="X">` and its `X : Type {}` in a bundle template.
 - All conditions are checked before anything changes; a refusal (`reason`) touched nothing.
   `preview=true` returns `changes` without making them (a template can appear once per member
@@ -432,6 +444,27 @@ Template validation is per-file and event-driven, so a Java rebuild never refres
 template markers. `/revalidate` recomputes them all; `/purgeMarkers` deletes markers of the
 exact untyped problem type (never Parsley, JDT or WTP markers) on js/css/html/xml files.
 Suspect phantoms → `/problems` (read the `source` mix) → `/revalidate` → `/purgeMarkers`.
+
+### `/threads`
+
+```bash
+curl -s 'http://localhost:9485/threads'
+curl -s 'http://localhost:9485/threads?resume=all'
+```
+
+```json
+{ "suspended":[ { "app":"MyApp", "thread":"WorkerThread3", "reason":"breakpoint at line 42",
+                  "at":{ "class":"app.components.Main", "method":"total", "line":42 } } ],
+  "autoResumed":[ { "app":"MyApp", "reason":"compile error", "at":{…}, "time":1790937000000 } ],
+  "hint":"/threads?resume=all - but a thread stopped on a compile error stops again: fix the error and refresh first" }
+```
+
+`reason` is `breakpoint at line N`, `exception TYPE` (an exception breakpoint someone set),
+`compile error` or `uncaught exception` (Eclipse's "Suspend execution on…" debug
+preferences). In apps the dev server launched, the last two are resumed at once, so the
+request fails fast instead of hanging; they're listed in `autoResumed`. A refresh that
+compiles with errors hot-swaps the broken classes into a running debug app all the same,
+which is how a request can reach code that didn't compile.
 
 ### `/dialogs`
 

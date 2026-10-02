@@ -2,12 +2,12 @@
 name: parslips-skill
 description: >-
   Drives the Parslips Eclipse plugin's dev server (localhost:9485) and a running
-  WebObjects or ng-objects app's own dev endpoints, so disk edits take effect and the
-  app can be observed. Use after editing any .java, .html or .wod file (Eclipse doesn't
-  notice disk edits until refreshed); when the app still shows old behavior; to
-  validate a template without rendering it; to create or import a project; to start,
-  stop or restart an app; to see what is running and on which port; to read the app's
-  log or startup console; to check whether a change hot-swapped; to look up an
+  WebObjects or ng-objects app's dev endpoints, so disk edits take effect and the app
+  can be observed. Use after editing any .java, .html or .wod file (Eclipse misses disk
+  edits until refreshed); when the app still shows old behavior; to validate a template
+  without rendering it; to create or import a project; to start, stop or restart an app;
+  to see what's running and on which port; to read the app's log or startup console;
+  when a request to the app hangs; to check whether a change hot-swapped; to look up an
   element's bindings ("what can I bind on WOPopUpButton?") or a component's; to resolve
   a keypath, find where a key is declared or which templates use a component; to rename
   a component, key or WOD element across Java and templates; or to run Java inside the
@@ -69,6 +69,7 @@ Handing back:
 | Launch refused for compile errors in a *dependency* | Run the refusal's `hint` (`/refreshProject?project=DEP&clean=true`), then retry — stale build state is the usual cause |
 | Launch/startup failed, app died, or app answers 500 to everything | `GET /console?app=NAME&tail=200` — the Eclipse console, kept after the process dies; read its header first (exit, end time, port-clash note) |
 | Every route 404s (even `/eval`, `/log`) but `/` renders | The app is on the wrong HTTP adaptor — grep `/console` for `WOAdaptor=`. `wo-adaptor-jetty` (0.12.0+) selects itself when it is a **dependency of the project**, so check the pom has it; no property needs setting. If it's there and still not chosen, something pins another adaptor: a `WOAdaptor=` line in the project's `Properties` or `~/WebObjects.properties`, or a `-WOAdaptor` launch argument. Not the app's route table |
+| A request to the app times out or hangs | `GET /threads` — a thread the debugger stopped (breakpoint, exception, compile error), with where and why; then `GET /dialogs`. Fix, then `/threads?resume=all` |
 | A call hangs, or a wait ends `blocked by a modal dialog` | `GET /dialogs` — Eclipse's modal dialogs (title, message, buttons); `?press=BUTTON` answers one. **Check this before "fixing" anything** |
 | Suspect compile errors | `GET /problems?project=NAME` — the Problems view as JSON (`count` is the true total; entries carry a `source`) |
 | App slow/frozen only under Eclipse | `GET /breakpoints` — a forgotten breakpoint; `?skipAll=true` disarms them all |
@@ -77,8 +78,8 @@ Handing back:
 | About to work on a component | `GET /context?component=NAME` — files, class, what it takes, its current problems, the elements its template uses (with their bindings) and who uses it, in one call |
 | Need what one of the project's components takes | `GET /componentApi?component=NAME` — its declared API, or its settable keys with types |
 | Need what a keypath is, or why it's invalid | `GET /keypath?component=NAME&keypath=a.b.c` — type and declaration per hop; the broken key and suggestions |
-| Need where a key is declared or used | `GET /find?component=NAME&key=KEY` — declaration, template uses, Java references; who uses the component: `/callers?component=NAME` |
-| Renaming a component, a key or a WOD element | `GET /rename?kind=component\|key\|element&…&preview=true`, then without `preview` — Java, HTML, WOD and call sites in one step. **Never rename by hand across files** |
+| Need where a key is declared or used | `GET /find?component=NAME&key=KEY` — declaration, template uses, Java references; for a model class's key, `class=pkg.Team` instead of `component=` finds every template keypath reaching it. Who uses a component: `/callers?component=NAME` |
+| Renaming a component, a key or a WOD element | `GET /rename?kind=component\|key\|element&…&preview=true`, then without `preview` — Java, HTML, WOD and call sites in one step; a model class's key with `kind=key&class=pkg.Team`. **Never rename by hand across files** |
 | `/validate` reports a missing or misspelled key | `GET /quickfix?component=NAME` lists the editor's fixes; `&problem=ID&fix=ID` applies one (replace, or create the key/action) |
 | Need which elements exist | `GET /elementRegistry?project=NAME&filter=TEXT` — the project's roster, with tags and what aliases replace |
 | Want to run code in the live JVM | `GET …/<App>.woa/eval` (WO) or `…/ng/dev/eval` (ng), `?snippet=…` — a REPL inside the running app |
@@ -111,6 +112,21 @@ Every endpoint says no the same two ways, so one check covers them all:
 
 HTTP 500 is a dev-server bug (`"internal":true`), not your mistake: report it, don't
 retry in a loop.
+
+## Never wait blind
+
+**Put a timeout on every request to the app: `curl -m 15 …`.** The app runs under
+Eclipse's debugger, and a thread that stops (a breakpoint, an uncaught exception, code that
+didn't compile) never answers. Without a timeout you wait until your own tool gives up,
+minutes later, and learn nothing. With one, a timeout is a signal: `GET /threads` shows what
+stopped, where and why; `GET /dialogs` shows what Eclipse is asking. Fix the cause, then
+`/threads?resume=all`.
+
+Apps you launch through the dev server don't stop on compile errors or uncaught exceptions;
+those requests fail fast (a 500, the error in the log), and `/threads` lists them under
+`autoResumed`. Breakpoints still stop. Dev-server calls carry their own limits (`timeout=`
+on `/launch`); give `/revalidate` and `/launch?open=true` a generous client timeout, and
+everything else 30s.
 
 ## Traps — the lessons that cost time
 
@@ -211,6 +227,23 @@ then the app; m2e resolves the dependency inside the workspace (no `mvn install`
 the dependency is a classpath change, so that one time you `/restart`. After that, edits in
 either project hot-swap — including new methods in the library.
 
+**Display-only components don't synchronize.** A component that just shows what it's
+given should extend `ERXNonSynchronizingComponent` (or `ERXStatelessComponent`) and read its
+bindings with `valueForBinding("x")`. A synchronizing component pushes every binding back to
+the parent after rendering, so `<wo:Table rows="$league.standings">` fails at render when
+`standings` has no setter (the validator warns). The editor reads the `valueForBinding`
+names as the component's API, and `/rename` renames them with the key.
+
+**Framework source on disk may not be the version the app runs.** A checkout of wonder-slim
+or ng-objects is usually ahead of the release the app's pom pins. Before using an API you
+read there, check the dependency's version in the pom; when they differ, the jar is the
+truth (`javap -cp ~/.m2/…/ERExtensions-8.0.13.jar er.extensions.routes.RouteHandler`).
+
+**`ExceptionInInitializerError`, then `Could not initialize class`: restart.** A static
+initializer that threw leaves its class unusable for the life of the JVM; no hot swap
+revives it. Fix the cause, then `/restart`. (eval reports only the outer error: read the
+static initializers.)
+
 **Don't launch Production.** `/launch` prefers a `local`/`dev` config and refuses to guess
 when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name from the list.
 
@@ -272,10 +305,10 @@ back — only the errors that exercise produced. Details and shapes in the refer
 curl -s 'http://localhost:9485/refreshProject?project=MyApp'                      # any edit → refresh first
 curl -s 'http://localhost:9485/validate?component=SomeComponent&project=MyApp'    # template edit → also validate
 sleep 2                                                                           # Java edit → let the swap land
-curl -s 'http://localhost:1200/cgi-bin/WebObjects/MyApp.woa/log?contains=MYDEBUG&tail=40'   # then read what it logged
+curl -s -m 15 'http://localhost:1200/cgi-bin/WebObjects/MyApp.woa/log?contains=MYDEBUG&tail=40'   # then read what it logged (always -m)
 # …and before handing back: every touched project refreshed and clean
 curl -s 'http://localhost:9485/refreshProject?project=my-model'                   # the dependency you edited too, not just the app
-curl -s 'http://localhost:9485/problems?project=MyApp'                            # {"projects":[]} → settled
+curl -s 'http://localhost:9485/problems?project=MyApp'                            # count 0 → settled
 ```
 
 ## More detail

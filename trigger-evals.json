@@ -134,5 +134,9 @@
   {
     "query": "rename the key 'amount' to 'total' in LineItem, it's bound from a couple of pages",
     "should_trigger": true
+  },
+  {
+    "query": "my curl to the app has been hanging for two minutes after I fixed a compile error, what's going on?",
+    "should_trigger": true
   }
 ]
