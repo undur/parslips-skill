@@ -12,7 +12,8 @@ repeated here.
 - Runtimes — what differs between ng-objects and WebObjects
 - Dev server — the endpoint table, then one section per endpoint group:
   `/launch` `/stop` `/restart` · `/createProject` `/importProject` · `/apps` ·
-  `/refreshProject` · `/validate` · `/elementApi` · `/console` · `/status` `/problems` ·
+  `/refreshProject` · `/validate` · `/elementApi` `/elementRegistry` · `/context`
+  `/componentApi` `/keypath` `/find` `/callers` · `/rename` `/quickfix` · `/console` · `/status` `/problems` ·
   `/revalidate` `/purgeMarkers` · `/dialogs` · `/breakpoints` · `/activity` `/watch`
 - Log endpoint, Eval endpoint, Runtime-problems endpoint — the app-side endpoints
 - Template conventions
@@ -53,6 +54,14 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 | `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. An unknown or closed project is a `reason` (closed: `hint` opens it). |
 | `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. An unknown or closed project is a `reason`. |
 | `/elementApi` | `element` (name or comma-list), `project?`, `runtime?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
+| `/elementRegistry` | `project`, `filter?` | Every element the project can use: name, class, `tags` (shortcuts/aliases), `origin`, `definition`, `deprecated`, `overriddenBy`. |
+| `/context` | `component`, `project?` | Everything before editing a component, in one call: files, class, API, current problems, the elements its template uses (with their bindings), and its callers. |
+| `/componentApi` | `component`, `project?` | What one of the project's own components accepts: its `.apiext`/`.api`, else its settable keys with types and declarations. |
+| `/keypath` | `component`, `keypath`, `project?` | Resolve a keypath hop by hop: each segment's type and declaration; for a broken one, the failing key, the type it was looked up on, and suggestions. |
+| `/find` | `component`, `key`, `project?` | A key's declaration, its uses in the component's templates, and its Java references. |
+| `/callers` | `component`, `project?` | Every template that uses the component (`<wo:Name>`, `X : Name {}`), in its project and the projects depending on it. |
+| `/rename` | `kind=component\|key\|element`, `component`, `to`, `from` (key/element), `preview?` | Rename across Java, HTML and WOD atomically through the editor's refactorings; `preview=true` lists the changes only. Undoable from Eclipse's Edit menu. |
+| `/quickfix` | `component`, `problem?`, `fix?`, `type?` | List a component's template problems with the editor's fixes; `problem=ID&fix=ID` applies one and answers with what's left. |
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`/`config`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
@@ -256,6 +265,115 @@ curl -s 'http://localhost:9485/elementApi?element=WOString&raw=true'            
   template says "the class for X is missing" but `/elementApi` resolves X fine.
 - In ng-objects projects the definitions are ng-objects' own (`NGString`, `NGCheckbox`…),
   never the WebObjects element of the same name.
+
+### `/elementRegistry`
+
+```bash
+curl -s 'http://localhost:9485/elementRegistry?project=MyApp&filter=update'
+```
+
+```json
+{ "project":"MyApp", "count":9, "filter":"update", "elements":[
+  { "name":"AjaxUpdateContainer", "class":"er.ajax.elements.AjaxUpdateContainer", "origin":"AjaxSlim", "definition":"apiext" },
+  { "name":"WOConditional", "class":"…WOConditional", "origin":"JavaWebObjects-5.4.3", "definition":"apiext", "overriddenBy":"ERXWOConditional" } ] }
+```
+
+The project's whole roster: framework elements and the project's own components. `tags` are
+the names that resolve to an element (`str`, `string` → `ERXWOString`); `overriddenBy` is
+what a name is replaced with under the project's aliases; `definition` is `apiext`, `api` or
+`none`. A big classpath takes a second or two.
+
+### `/context`, `/componentApi`, `/keypath`, `/find`, `/callers` — a project's own code
+
+These answer questions about the project's components the way the editor does, so you don't
+reconstruct them by reading Java and grepping templates.
+
+```bash
+curl -s 'http://localhost:9485/context?component=Shelf'               # before editing: the whole picture
+curl -s 'http://localhost:9485/componentApi?component=Badge'          # what <wo:Badge …> takes
+curl -s 'http://localhost:9485/keypath?component=Shelf&keypath=game.homeTeam.rating'
+curl -s 'http://localhost:9485/find?component=Shelf&key=title'        # declaration + uses
+curl -s 'http://localhost:9485/callers?component=Badge'               # who uses <wo:Badge>
+```
+
+`/context` is `/componentApi` plus `validation` (as `/validate` answers), `uses` and `usedBy`
+(as `/callers` answers):
+
+```json
+{ "component":"Shelf", "found":true, "project":"MyApp", "class":"app.components.Shelf", "format":"bundle",
+  "files":{ "html":"/MyApp/src/main/components/Shelf.wo/Shelf.html", "java":"/MyApp/src/main/java/app/components/Shelf.java" },
+  "source":"keys",
+  "bindings":[ { "name":"title", "type":"java.lang.String", "declaredIn":"app.components.Shelf", "via":"field",
+                 "at":{ "file":"/MyApp/src/main/java/app/components/Shelf.java", "line":9 } } ],
+  "validation":{ "component":"Shelf", "found":true, "files":[], "problems":[] },
+  "uses":[ { "name":"Badge", "resolved":"app.components.Badge", "definition":"keys", "bindings":["label"] },
+           { "name":"str", "resolved":"WOString", "definition":"apiext", "bindings":["value","escapeHTML","…"], "required":["value"] } ],
+  "usedBy":{ "component":"Shelf", "count":0, "components":[], "callers":[] } }
+```
+
+- **`/componentApi`**: `source` is `apiext`/`api` (then `api` is the full API, as
+  `/elementApi` renders it) or `keys`: the component declares nothing, so its bindings are its
+  settable keys (setters and fields declared in the project), each with `type` and `at`.
+- **`/keypath`**: `segments` has one entry per resolved key (`key`, `type`, `declaredIn`,
+  `via`, `at`; framework members have `at.binary` instead of a file). `valid:false` adds
+  `invalidKey`, `on` (the type it was looked up on) and `suggestions`. A key reached through
+  `Object`, a collection or a component can't be checked statically: `valid:true` with
+  `unchecked` naming it. `settable` says whether a valid value can be pushed back (a form
+  field's `value`). A leading `$` is fine.
+- **`/find`**: `declaration` (`file`, `line`, `member`, `via`, `type`), `templates` (uses in
+  the component's own HTML/WOD) and `java` (JDT references). Every location has `file`,
+  `line`, `column` and `text`, the source line. One key at a time; for a keypath, `/keypath`.
+- **`/callers`**: `callers[]` locations with the calling `component`; `components` is the
+  distinct list. Covers the component's project and every project that depends on it.
+
+### `/rename` and `/quickfix` — changing code the editor's way
+
+```bash
+curl -s 'http://localhost:9485/rename?kind=key&component=Badge&from=caption&to=label&preview=true'
+curl -s 'http://localhost:9485/rename?kind=key&component=Badge&from=caption&to=label'
+curl -s 'http://localhost:9485/rename?kind=component&component=Badge&to=Tag'
+curl -s 'http://localhost:9485/rename?kind=element&component=Badge&from=Caption&to=Text'   # a WOD element name
+```
+
+```json
+{ "kind":"key", "component":"Badge", "from":"caption", "to":"label", "renamed":true,
+  "changes":[ {"file":"/MyApp/src/main/java/app/components/Badge.java","edits":1},
+              {"file":"/MyApp/src/main/components/Badge.wo/Badge.wod","edits":1},
+              {"file":"/MyApp/src/main/components/Shelf.wo/Shelf.html","edits":1} ] }
+```
+
+- **`kind=key`** renames every member implementing the key, each in its own pattern (`caption()`
+  → `label()`, `setCaption` → `setLabel`, `getCaption` → `getLabel`), their Java callers, the
+  component's template uses, and the attribute at every call site (`<wo:Badge caption=…>` →
+  `label=…`). A private field that isn't a key keeps its name.
+- **`kind=component`** renames the class (every Java reference), its `.wo` folder or `.html`
+  and files, and every `<wo:Name>`/`X : Name {}` in its project and dependent projects.
+- **`kind=element`** renames `<webobject name="X">` and its `X : Type {}` in a bundle template.
+- All conditions are checked before anything changes; a refusal (`reason`) touched nothing.
+  `preview=true` returns `changes` without making them (a template can appear once per member
+  renamed). Each rename is undoable from Eclipse's Edit menu. Java edits go through JDT, so
+  references resolve exactly — never rename by hand across files.
+
+```bash
+curl -s 'http://localhost:9485/quickfix?component=Shelf'                          # problems + fixes
+curl -s 'http://localhost:9485/quickfix?component=Shelf&problem=html:3:49&fix=1'  # apply one
+```
+
+```json
+{ "component":"Shelf", "problems":[
+  { "id":"html:3:49", "file":"/MyApp/…/Shelf.html", "line":3, "message":"There is no key 'titel' in Shelf. Did you mean 'title'?",
+    "fixes":[ {"id":"1","fix":"replace","with":"title","description":"Replace 'titel' with 'title'"},
+              {"id":"2","fix":"createKey","name":"titel","description":"Create key 'titel' in Shelf"} ] } ] }
+```
+
+- Fixes: `replace` (a suggestion), `createKey` (a private field with accessor and mutator;
+  `type=` sets its type, default `java.lang.String`), `createAction` (an action method, for an
+  action binding).
+- Applying answers `fixed:true` with the component's `problems` after re-validation. A
+  problem id is its position (`html:LINE:OFFSET`); after an edit, list again for fresh ids.
+  A `replace` re-checks the text first and refuses if the template moved on.
+- If the component's class is open in an editor with unsaved changes, a created key joins
+  those unsaved changes (a `note` says so) rather than saving the developer's pending edits.
 
 ### `/console`
 

@@ -118,5 +118,21 @@
   {
     "query": "I generated a wonder project under ~/git/inventory but Eclipse doesn't see it yet, can you bring it in",
     "should_trigger": true
+  },
+  {
+    "query": "rename the OrderRow component to InvoiceRow — it's used in a few templates",
+    "should_trigger": true
+  },
+  {
+    "query": "which templates use <wo:PriceTag>? I want to change its bindings",
+    "should_trigger": true
+  },
+  {
+    "query": "why does the validator say there is no key 'customr' for the keypath 'order.customr' in CheckoutPage?",
+    "should_trigger": true
+  },
+  {
+    "query": "rename the key 'amount' to 'total' in LineItem, it's bound from a couple of pages",
+    "should_trigger": true
   }
 ]

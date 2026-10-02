@@ -8,7 +8,9 @@ description: >-
   validate a template without rendering it; to create or import a project; to start,
   stop or restart an app; to see what is running and on which port; to read the app's
   log or startup console; to check whether a change hot-swapped; to look up an
-  element's bindings ("what can I bind on WOPopUpButton?"); or to run Java inside the
+  element's bindings ("what can I bind on WOPopUpButton?") or a component's; to resolve
+  a keypath, find where a key is declared or which templates use a component; to rename
+  a component, key or WOD element across Java and templates; or to run Java inside the
   live app. Applies to projects with .wo bundles, <wo:...> or <webobject> tags,
   build.properties with project.base, WOComponent/NGComponent classes, or
   wonder-slim/ERExtensions.
@@ -72,6 +74,13 @@ Handing back:
 | App slow/frozen only under Eclipse | `GET /breakpoints` — a forgotten breakpoint; `?skipAll=true` disarms them all |
 | Need what the app logged | `GET …/<App>.woa/log` (WO) or `…/ng/dev/log` (ng), `?contains=…&tail=…` — port and runtime from `/apps` |
 | Need an element's real bindings | `GET /elementApi?element=NAME&project=NAME` — the editor's resolved API as JSON; don't reverse-engineer the Java |
+| About to work on a component | `GET /context?component=NAME` — files, class, what it takes, its current problems, the elements its template uses (with their bindings) and who uses it, in one call |
+| Need what one of the project's components takes | `GET /componentApi?component=NAME` — its declared API, or its settable keys with types |
+| Need what a keypath is, or why it's invalid | `GET /keypath?component=NAME&keypath=a.b.c` — type and declaration per hop; the broken key and suggestions |
+| Need where a key is declared or used | `GET /find?component=NAME&key=KEY` — declaration, template uses, Java references; who uses the component: `/callers?component=NAME` |
+| Renaming a component, a key or a WOD element | `GET /rename?kind=component\|key\|element&…&preview=true`, then without `preview` — Java, HTML, WOD and call sites in one step. **Never rename by hand across files** |
+| `/validate` reports a missing or misspelled key | `GET /quickfix?component=NAME` lists the editor's fixes; `&problem=ID&fix=ID` applies one (replace, or create the key/action) |
+| Need which elements exist | `GET /elementRegistry?project=NAME&filter=TEXT` — the project's roster, with tags and what aliases replace |
 | Want to run code in the live JVM | `GET …/<App>.woa/eval` (WO) or `…/ng/dev/eval` (ng), `?snippet=…` — a REPL inside the running app |
 | Need the binding errors the app rendered | `GET …/<App>.woa/problems` (WO) or `…/ng/dev/problems` (ng) — the inline error boxes as JSON |
 | Markers look stale (survive rebuilds) | `GET /revalidate?project=NAME` re-validates every template; `GET /purgeMarkers` removes orphaned legacy markers |
@@ -220,6 +229,16 @@ After a template edit do **both**: `/refreshProject` (so the change takes effect
 `/validate?component=NAME` (to catch mistakes before rendering). `problems` empty →
 clean; each problem has `severity`, `line`, `charStart`/`charEnd`, `message`, `file`.
 `/refreshProject` does not validate, and `/validate` does not make an edit take effect.
+
+## Ask the editor, don't reconstruct
+
+The editor already resolves what you'd otherwise piece together from Java and grep: what a
+component takes, what a keypath is at each hop, where a key is declared and used, who uses a
+component. Before working on a component, `/context` gives you all of it in one call; the
+narrower endpoints (`/componentApi`, `/keypath`, `/find`, `/callers`) answer one question
+each. To change names, `/rename` does it through the editor's refactorings: Java (exact, via
+JDT), templates and call sites move together, so nothing is left pointing at the old name.
+Shapes and details are in the reference.
 
 ## Ask what an element can do
 
