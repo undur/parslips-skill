@@ -42,7 +42,7 @@ their input, or report back, copy this checklist into your response and tick it 
 
 ```
 Handing back:
-- [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered ok
+- [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered ok (a JSON answer is a build-error report or a refusal naming a misspelled or closed project: not done)
 - [ ] /problems?project=NAME on each of them — no errors I introduced
 - [ ] any template I edited validates clean (/validate?component=NAME)
 - [ ] any app that was running when I started is running again

@@ -39,28 +39,28 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | Endpoint | Params | Does |
 |---|---|---|
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
-| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs. |
-| `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise. |
+| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs. A name nothing matches comes with a `reason`. |
+| `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise; `refreshed:false` + `reason` for an unknown or closed project (the closed case's `hint` is the `/openProject` call). Only `ok` means it worked. |
 | `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
 | `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. |
 | `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. |
 | `/elementApi` | `element` (name or comma-list), `project?`, `runtime?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
-| `/stop` | `app`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
-| `/restart` | `app`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
-| `/console` | `app`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
+| `/stop` | `app`/`config`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
+| `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
+| `/console` | `app`/`config`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
 | `/dialogs` | `press?`, `close?`, `title?` | List Eclipse's open modal dialogs; `press=BUTTON` presses one; `close=true` closes the topmost; `title=TEXT` targets one. |
-| `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints. |
+| `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints (any other value is an `error`). |
 | `/createProject` | `name`, `template`, `package?`, `location?`, `launch?` (+ `/launch` params) | Generate a project from a bundled template (`ng-objects-app`, `wonder-slim-app`, `maven`), import it through m2e, make an application launchable, optionally launch it. |
 | `/importProject` | `path` | Import an existing Maven project directory into the workspace through m2e; an application gets a launch configuration if it has none. |
 | `/openProject` | `project`, `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. No open-everything option, by design. |
 | `/apps` | `name?` | Running apps: port, `runtime`, pid, and the dependencies whose source is open in the workspace. `name` → one app. |
 | `/activity` | `since?`, `clear?` | The dev server's request feed: every handled request with query, status, duration and (capped) response. `since=SEQ` is the poll cursor. |
 | `/watch` | | A live spectator page (HTML) over `/activity`: narrated requests with a running tally. For the human's screen. |
-| `/refresh` | `path` | Refresh one resource path. |
-| `/openComponent` | `component`, `app?`, `lineNumber?`, `offset?`, `length?` | Open a component in the editor, revealing a line or a character range (`offset`/`length` as `/validate` reports them). |
-| `/openJavaFile` | `className`, `lineNumber?`, `app?` | Open a Java file at a line. |
+| `/refresh` | `path` | Refresh one resource: an absolute file-system path (a file just created on disk included) or a workspace path. `refreshed:false` + `reason` when it's in no open project. |
+| `/openComponent` | `component`, `app?`, `lineNumber?`, `offset?`, `length?` | Open a component in the editor, revealing a line or a character range (`offset`/`length` as `/validate` reports them). `opened:false` + `reason` when no open project has it. |
+| `/openJavaFile` | `className`, `lineNumber?`, `app?` | Open a Java file (fully qualified `className`), at a line if given. `opened:false` + `reason` when no open project has it. |
 | `/registerApp` | `name`, `port`, `pid?`, `runtime?` | (App-side, automatic) An app announces itself at startup. You won't call this. |
 
 Older plugin builds expose a subset — the index at `/` lists exactly what a build offers;
