@@ -42,7 +42,7 @@ their input, or report back, copy this checklist into your response and tick it 
 
 ```
 Handing back:
-- [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered ok (a JSON answer is a build-error report or a refusal naming a misspelled or closed project: not done)
+- [ ] /refreshProject?project=NAME for EVERY project I touched (a dependency counts as much as the app) — each answered `ok` (anything else: not done)
 - [ ] /problems?project=NAME on each of them — no errors I introduced
 - [ ] any template I edited validates clean (/validate?component=NAME)
 - [ ] any app that was running when I started is running again
@@ -89,6 +89,20 @@ isn't running or the plugin isn't loaded; don't retry blindly. (A plain `ok` mea
 old plugin build with only the classic endpoints — `/refreshProject`, `/validate`,
 `/launch`, `/stop`, `/apps`.) The dev server is loopback-only with no auth.
 
+## Reading any answer
+
+Every endpoint says no the same two ways, so one check covers them all:
+
+- **`error`** — your call is wrong (a missing or invalid parameter, named). Fix the call;
+  repeating it can't help.
+- **`reason`** — the call was fine but **nothing happened** (unknown or closed project,
+  port held, nothing to open). Read it: it says what to change. A **`hint`**, when
+  present, is the exact call that fixes it — run it, then retry.
+- Neither → it happened. A plain `ok` means done; JSON without either key is the result.
+
+HTTP 500 is a dev-server bug (`"internal":true`), not your mistake: report it, don't
+retry in a loop.
+
 ## Traps — the lessons that cost time
 
 **Check the refresh response.** Plain `ok` means the build settled clean. A JSON body
@@ -133,10 +147,6 @@ swap above) is "reachable". To confirm health, fetch a page or the app's log end
 and a Production config included, all sharing the same registered block. Read the entry
 whose `running` is true; don't take the first one.
 
-**`found:false` from `/validate` tells you why.** Its `reason` distinguishes a closed
-project (open it: `/openProject?project=NAME`, or check `projectOpen` in `/status`), an
-unknown project name, and a component nobody has. Each needs a different fix.
-
 **Know your source reach; never invent framework internals.** When a question crosses
 into a framework or dependency (why does `ERExtensions` do X, is the bug in `helium5` or
 here), check `/apps?name=APP` first: its `dependencies` are the ones whose source is open
@@ -153,13 +163,13 @@ check `/status` for what's running now, and relaunch if needed.
 
 **Refused for compile errors nobody can find? Retry once.** Right after opening projects,
 m2e is still resolving classpaths and the workspace briefly shows errors that vanish
-seconds later. `/launch` now waits for those jobs and re-checks before refusing, but if a
+seconds later. `/launch` waits for those jobs and re-checks before refusing, but if a
 refusal still names errors that `/problems` doesn't show, retry once before reaching for
 `ignoreErrors=true`. The refusal always lists the problems it counted — read them; only
 Java errors ever block a launch, never template markers.
 
 **One dev port, and the app you're working on gets it.** Apps here share port 1200 by
-convention, so starting yours while another runs is a clash — one `/launch` now refuses
+convention, so starting yours while another runs is a clash — `/launch` refuses
 explicitly, naming the holder. The rule in this shop: **stop the other app and start
 yours** (`stopOthers=true`); the developer expects that, and running several apps is
 fine but not the norm. Only when you genuinely need both up — testing an integration,

@@ -36,6 +36,13 @@ The hooks work the same for both runtimes; two things differ:
 Plain `GET`; responses are JSON, except `/console` (plain text), `/watch` (HTML) and a few
 fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse prefs.
 
+Every refusal has one of two shapes (the rule for reading them is in `SKILL.md`):
+`{"error":"missing required parameter 'component'"}` when the call itself is wrong, or the
+endpoint's usual shape with its outcome empty plus `reason` (and often `hint`, the call
+that fixes it) when the call was fine but nothing happened:
+`{"projects":0,"components":0,"reason":"project 'X' is closed","hint":"/openProject?project=X"}`.
+Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal error: …","internal":true}`.
+
 | Endpoint | Params | Does |
 |---|---|---|
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
@@ -43,18 +50,18 @@ fire-and-forget endpoints that answer `ok`. Port is configurable in Eclipse pref
 | `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise; `refreshed:false` + `reason` for an unknown or closed project (the closed case's `hint` is the `/openProject` call). Only `ok` means it worked. |
 | `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
-| `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. |
-| `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. |
+| `/revalidate` | `project?` | Revalidate EVERY template in a project (or the workspace). Slow: generous timeout. An unknown or closed project is a `reason` (closed: `hint` opens it). |
+| `/purgeMarkers` | `project?` | Delete orphaned untyped problem markers on js/css/html/xml (legacy-validator leftovers). Typed markers untouched. An unknown or closed project is a `reason`. |
 | `/elementApi` | `element` (name or comma-list), `project?`, `runtime?`, `raw?` | An element's resolved binding API as JSON. `raw=true` returns the `.apiext` XML. |
 | `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. |
 | `/stop` | `app`/`config`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | stop → wait for termination → refresh+rebuild named projects → launch. Per-stage results. |
-| `/console` | `app`/`config`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. |
+| `/console` | `app`/`config`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. Nothing launched under that name: `captured:false` + `reason`. |
 | `/dialogs` | `press?`, `close?`, `title?` | List Eclipse's open modal dialogs; `press=BUTTON` presses one; `close=true` closes the topmost; `title=TEXT` targets one. |
 | `/breakpoints` | `skipAll?` | List workspace breakpoints; `skipAll=true/false` toggles Skip All Breakpoints (any other value is an `error`). |
 | `/createProject` | `name`, `template`, `package?`, `location?`, `launch?` (+ `/launch` params) | Generate a project from a bundled template (`ng-objects-app`, `wonder-slim-app`, `maven`), import it through m2e, make an application launchable, optionally launch it. |
 | `/importProject` | `path` | Import an existing Maven project directory into the workspace through m2e; an application gets a launch configuration if it has none. |
-| `/openProject` | `project`, `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. No open-everything option, by design. |
+| `/openProject` | `project`, `related?` | Open a closed project **plus its workspace dependencies** (transitive, pom-resolved), then clean-build. `related=false` for just the one. No open-everything option, by design. An unknown project is `opened:[]` + `reason`. |
 | `/apps` | `name?` | Running apps: port, `runtime`, pid, and the dependencies whose source is open in the workspace. `name` → one app. |
 | `/activity` | `since?`, `clear?` | The dev server's request feed: every handled request with query, status, duration and (capped) response. `since=SEQ` is the poll cursor. |
 | `/watch` | | A live spectator page (HTML) over `/activity`: narrated requests with a running tally. For the human's screen. |
@@ -107,7 +114,7 @@ count (Maven, JUnit etc. are ignored).
   says so and suggests `lsof`.
 
 Launches are made with Eclipse's own prompting disabled, so no launch dialog can appear;
-launch failures come back as JSON `error`. Unsaved editor buffers are not saved (the launch
+launch failures come back as `launched:false` with Eclipse's message as the `reason`. Unsaved editor buffers are not saved (the launch
 reflects what's on disk).
 
 **`waitForPort=N`** delays the response until the port answers (`"ready":true` with
