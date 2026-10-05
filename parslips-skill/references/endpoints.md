@@ -48,7 +48,7 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 |---|---|---|
 | `/` (or `/help`) | | Self-describing JSON index of every endpoint. Unknown paths answer with it too. |
 | `/where` | `path` | Whether a directory is in an Eclipse workspace project: `inWorkspace`, `project`, `projectPath`, `relative`; or a `reason`. For a git worktree of a checkout Eclipse has, `workIn` names the directory to edit instead. Call it with your working directory before the first edit. |
-| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs, and per app `suspendedThreads` when the debugger stopped any (see `/threads`). A name nothing matches comes with a `reason`. |
+| `/status` | `app?` | One entry **per launch config** (of the named project, or all): running/mode/uptime, `lastTouchedSeconds` (how long ago it was last worked on through the dev server; `null`: not recently — a recently touched app is in use), `projectOpen`, `compileErrors`, `registered` port/pid/runtime + `reachable` (a TCP probe). Plus `dialogs`: open modal dialogs, and per app `suspendedThreads` when the debugger stopped any (see `/threads`). A name nothing matches comes with a `reason`. |
 | `/refreshProject` | `project?`, `build?`, `clean?` | Refresh project(s) from disk + incremental build. `ok` on a clean build, a JSON `buildErrors` report otherwise; `refreshed:false` + `reason` for an unknown or closed project (the closed case's `hint` is the `/openProject` call). Only `ok` means it worked. |
 | `/problems` | `project?`, `severity?`, `limit?` | Problem markers as JSON, grouped `projects[]` (each with `count`, `shown`, `problems[]`); a named project that yields nothing comes with a `reason` (clean, closed, or unknown). |
 | `/validate` | `component`, `project?` | Validate a component's template; problems as JSON. `found:false` carries a `reason`. |
@@ -63,7 +63,7 @@ Both answer HTTP 200; 500 is a dev-server bug, answered `{"error":"internal erro
 | `/callers` | `component`, `project?` | Every template that uses the component (`<wo:Name>`, `X : Name {}`), in its project and the projects depending on it. |
 | `/rename` | `kind=component\|key\|element`, `component` (or `class` for a key), `to`, `from` (key/element), `preview?` | Rename across Java, HTML and WOD atomically through the editor's refactorings; `preview=true` lists the changes only. Undoable from Eclipse's Edit menu. |
 | `/quickfix` | `component`, `problem?`, `fix?`, `type?` | List a component's template problems with the editor's fixes; `problem=ID&fix=ID` applies one and answers with what's left. |
-| `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. Refuses when the target port is held (`stopOthers=true` stops the holder first; `port=N` runs alongside). Never raises Eclipse's launch dialogs. With `waitForPort`, `ready:true` means the port answered and the process was still alive 1.5s later (an app failing in its `Application` constructor opens its port first, then dies: that's `ready:false`). |
+| `/launch` | `config?`/`app?`, `mode?`, `open?`, `ignoreErrors?`, `allowMultiple?`, `waitForPort?`, `timeout?`, `port?`, `args?`, `stopOthers?` | List configs, or start one with preflight and wait-until-ready. A held target port is left to its holder (it may be in use): the launch runs on the next free port (`movedFrom`, `port`), with `holders` and each one's `lastTouchedSeconds`. `stopOthers=true` stops the holders (hard-killed if they won't stop) and takes the port: ask the developer first. `port=N` picks the port. Never raises Eclipse's launch dialogs. With `waitForPort`, `ready:true` means the port answered and the process was still alive 1.5s later (an app failing in its `Application` constructor opens its port first, then dies: that's `ready:false`). A dead process or a stall (no port and no output for 15s) answers `ready:false` at once, with `lastOutput`. |
 | `/stop` | `app`/`config`, `force?` | Stop a running app (terminate, or `force=true` to hard-kill the registered pid). |
 | `/restart` | `app`/`config`, `refresh?` (+ `/launch` params) | refresh+rebuild named projects → stop → wait for termination → launch. Per-stage results. With compile errors it refuses (`restarted:false`) before stopping, leaving the app up. |
 | `/console` | `app`/`config`, `tail?` | The launch's console output (default last 100 lines), kept after the process dies. Header: state, exit code, end time, and a port-clash note when a sibling launch started just before this one ended. Nothing launched under that name: `captured:false` + `reason`. |
@@ -90,7 +90,7 @@ a plain `ok` from `/` means only the classic endpoints (`/refreshProject`, `/val
 ```bash
 curl -s 'http://localhost:9485/launch'                                        # list configs: {"configs":[{"name":…,"project":…}]}
 curl -s 'http://localhost:9485/launch?config=MyApp%20-%20Local'               # by exact config name
-curl -s 'http://localhost:9485/launch?app=MyApp&waitForPort=1200&timeout=90'  # by project name; block until ready/dead/timeout
+curl -s 'http://localhost:9485/launch?app=MyApp&waitForPort=1200&timeout=30'  # by project name; block until ready/dead/stalled
 curl -s 'http://localhost:9485/launch?app=MyApp&mode=run'                     # run mode (default is debug)
 curl -s 'http://localhost:9485/restart?app=MyApp&refresh=my-model&waitForPort=1200'
 curl -s 'http://localhost:9485/stop?app=MyApp'                                # clean terminate
@@ -114,24 +114,31 @@ count (Maven, JUnit etc. are ignored).
   `ignoreErrors=true` overrides.
 - config **already running** → use `/restart`, `port=N` for a second instance alongside,
   or `allowMultiple=true`.
-- **port held** — the target port is the config's `-WOPort` (default 1200); if something
-  listens there, `{"launched":false,"reason":"port 1200 is in use by \"X\"","holders":[…]}`.
-  `stopOthers=true` stops the holders (registered apps and Eclipse launches it can name),
-  waits for the port to free up, then launches — the response lists `stopped`. `port=N`
-  launches on N instead: a `-WOPort N` program argument is injected into an **unsaved
-  working copy** of the configuration (the saved config is untouched), and `waitForPort`
-  defaults to N. `args=…` appends further program arguments the same way. A holder the
-  dev server can't name (a process outside Eclipse) can't be stopped this way; the refusal
-  says so and suggests `lsof`.
+- **port held** — the target port is the config's `-WOPort` (default 1200). Not a refusal,
+  and the holder is left alone: it may be in use. The app launches on the next free port,
+  `"port":1201,"movedFrom":1200,"portNote":"…"`, and `waitForPort` follows it there.
+  `"holders":[{"name":"X","lastTouchedSeconds":40}]` names each app on the port and how long
+  ago it was last worked on through the dev server (refresh, validate, launch, rename…
+  naming its project; `null`: not recently). `stopOthers=true`, once the developer has said
+  so, takes the port: it stops the holders it can name (registered apps and Eclipse
+  launches), waits up to 5s, hard-kills holders with a registered pid that didn't let go,
+  waits 3s more, and launches; the response lists `stopped`. `port=N` launches on N: a
+  `-WOPort N` program argument is injected into an **unsaved working copy** of the
+  configuration (the saved config is untouched), and `waitForPort` defaults to N. `args=…`
+  appends further program arguments the same way.
 
 Launches are made with Eclipse's own prompting disabled, so no launch dialog can appear;
 launch failures come back as `launched:false` with Eclipse's message as the `reason`. Unsaved editor buffers are not saved (the launch
 reflects what's on disk).
 
 **`waitForPort=N`** delays the response until the port answers (`"ready":true` with
-`startupMillis`), the launched process terminates (`"ready":false`, `reason`, pointer at
-`/console`), a modal dialog appears after the launch (`"reason":"blocked by a modal
-dialog"` with the dialog), or `timeout` seconds (default 60) pass. Don't know the port yet?
+`startupMillis`), the launched process terminates (`"ready":false`, `reason`, `lastOutput`,
+pointer at `/console`), the app stalls, with no port and no output for 15s
+(`"reason":"stalled: …"`, `lastOutput`, `suspendedThreads`, `threads`, a `hint`), a modal
+dialog appears after the launch (`"reason":"blocked by a modal dialog"` with the dialog),
+or `timeout` seconds (default 60) pass. A process that has ended counts as terminated even
+while Eclipse's debug target for it lingers. That case used to read as "still starting"
+until the timeout. Don't know the port yet?
 Launch without it, poll `/status?app=NAME` until the running config's `registered.port`
 appears, then use `waitForPort` from then on. Mode defaults to **debug** (hot-code-replace
 needs it).
@@ -144,7 +151,7 @@ needs it).
 ### `/createProject` and `/importProject`
 
 ```bash
-curl -s --max-time 300 'http://localhost:9485/createProject?name=my-app&template=ng-objects-app&location=~/git&launch=true&waitForPort=1200&stopOthers=true'
+curl -s --max-time 300 'http://localhost:9485/createProject?name=my-app&template=ng-objects-app&location=~/git&launch=true&waitForPort=1200'
 curl -s --max-time 300 'http://localhost:9485/createProject?name=my-logic&template=maven&package=is.example.logic'
 curl -s --max-time 300 'http://localhost:9485/importProject?path=~/git/some-existing-project'
 ```

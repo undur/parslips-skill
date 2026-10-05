@@ -60,6 +60,26 @@ Handing back:
 - [ ] anything I had to leave broken is named in my report
 ```
 
+**Keep moving, and never stop someone else's app.** Don't sit waiting on another app or
+on the human, and don't stop an app you didn't start: it may be in use, by another agent or
+by the developer.
+
+- **A port is held:** just launch. `/launch` leaves the holder alone and runs your app on
+  the next free port, saying so (`port`, `movedFrom`). Use that port, and mention it in your
+  report. `holders` shows who has the dev port and `lastTouchedSeconds`: how long ago it was
+  last worked on through the dev server (`null`: not recently).
+- **You need that exact port:** ask the developer, naming the holder and its
+  `lastTouchedSeconds` ("OtherApp holds 1200, last worked on 40 s ago: stop it, or keep
+  running on 1201?"). Only on a yes relaunch with `stopOthers=true`. Never stop it yourself
+  with `/stop`, `kill` or `stopOthers` unasked.
+- **An app you started is dead or wedged:** stop it (`/stop?app=X&force=true`, or `lsof` +
+  `kill -9`, see Traps), then launch again. Someone else's app: tell the developer.
+- **Apps start in 1–3 seconds.** Give `/launch` `timeout=30` at most (`/launch?open=true`,
+  which builds first, excepted). Never raise a timeout to wait longer.
+- **A `ready:false` answer is the diagnosis, not a reason to retry and wait.** Read `reason`,
+  `lastOutput` and `suspendedThreads`, act once (stop, fix, relaunch), and if it fails the
+  same way again, report it with `/console`. Don't loop.
+
 ## When to do what
 
 | You just… | Do this |
@@ -72,8 +92,9 @@ Handing back:
 | Need the app's port, framework, or readable dependencies | `GET /apps?name=NAME` — port, `runtime` (`ng`/`wo`, picks the endpoint URL form), and the dependencies whose source is open in the workspace |
 | Need a **new** project | `GET /createProject?name=NAME&template=ng-objects-app` (or `wonder-slim-app`, or `maven` for a plain library) — generates it, imports it into Eclipse, makes it launchable; add `&launch=true&waitForPort=1200` to end with a running app. **Never hand-write a project skeleton** |
 | Have a project on disk that Eclipse doesn't know | `GET /importProject?path=/abs/dir` — m2e import, no wizard; an application gets a launch config |
-| Need to start the app | `GET /launch?app=NAME&waitForPort=PORT` — blocks until it answers or provably failed |
-| Launch refused: `port N is in use by "X"` | Another app holds the dev port. **Default: take it** — `…&stopOthers=true` stops X and launches yours. Need both running? `…&port=1201` runs yours alongside (any free port; then use that port in `log`/`eval` URLs) |
+| Need to start the app | `GET /launch?app=NAME&waitForPort=PORT&timeout=30` — blocks until it answers, died, or stalled. Read `port`: if the response has `movedFrom`, another app holds the dev port and yours runs on that other port (the holder is left alone) |
+| `/launch` answered `ready:false` | It's the diagnosis: `reason` plus `lastOutput` (the app's last lines), and `suspendedThreads` for a stall. Stop it (`/stop?app=NAME&force=true`), fix what the output shows, launch once more; same failure again → report it with `/console` |
+| Need two apps running at once | `…&port=1201` runs yours alongside (any free port; then use that port in `log`/`eval` URLs) |
 | Workspace cold (projects closed) | `GET /launch?config=NAME&open=true&waitForPort=PORT&timeout=300` — opens the project + its workspace dependencies, clean-builds, launches, waits. Never try to open "everything" |
 | Need a restart (classpath change, broken swap, wedged reload) | `GET /restart?app=NAME&refresh=PROJ1,PROJ2&waitForPort=PORT` — stop, rebuild, launch, wait, in one call |
 | Launch refused for compile errors in a *dependency* | Run the refusal's `hint` (`/refreshProject?project=DEP&clean=true`), then retry — stale build state is the usual cause |
@@ -203,15 +224,24 @@ refusal still names errors that `/problems` doesn't show, retry once before reac
 `ignoreErrors=true`. The refusal always lists the problems it counted — read them; only
 Java errors ever block a launch, never template markers.
 
-**One dev port, and the app you're working on gets it.** Apps here share port 1200 by
-convention, so starting yours while another runs is a clash — `/launch` refuses
-explicitly, naming the holder. The rule in this shop: **stop the other app and start
-yours** (`stopOthers=true`); the developer expects that, and running several apps is
-fine but not the norm. Only when you genuinely need both up — testing an integration,
-say — run yours on another port with `port=N` (the argument is injected into an unsaved
-copy of the launch config; nothing is edited), and remember that port when you build the
-app's `log`/`eval`/`problems` URLs. Never resolve a clash by hand-killing processes when
-`stopOthers` will do it cleanly.
+**One dev port, shared — and the app on it may be someone else's.** Apps here share port
+1200 by convention, so it's often held when you launch, quite possibly by an app another
+agent or the developer is working on right now. `/launch` never stops it: your app runs on
+the next free port, and the response says so (`movedFrom`, `port`, `portNote`, `holders`
+with `lastTouchedSeconds`). **Read `port` from the response** and use it in your
+`log`/`eval`/`problems` URLs. Taking the port (`stopOthers=true`: stops the holders,
+hard-killing one that won't stop) is the developer's decision: ask first. `port=N` picks a
+port yourself; the argument goes into an unsaved copy of the launch config, so nothing is
+edited. (Plugin builds older than this behaviour refuse a held port, naming the holder:
+relaunch with `port=` the next free port.)
+
+**A launch that dies or stalls answers at once.** `/launch` reports `ready:false` as soon
+as the process ends, and also when the app has neither answered its port nor written
+anything for 15 seconds (`reason: stalled…`). Either answer carries `lastOutput`, the
+app's last console lines, and a stall adds `suspendedThreads`/`threads`. A stall with
+threads suspended is a debugger stop: `/threads` says where. A stall stopping right after
+the HotswapAgent banner, or a JVM that ignores a thread dump, is wedged: stop it with
+`force=true` and launch once more. Don't sit out a timeout hoping it recovers.
 
 **Start new projects through the plugin, not by hand.** `/createProject` produces the
 house layout (pom, `build.properties`, Application/Session/DirectAction/Main, the right
@@ -279,7 +309,8 @@ registered pid; when there is none (`/status` says `running:false` while the por
 held), `lsof -nP -iTCP:PORT -sTCP:LISTEN`, `kill -9` the pid, then `/launch`. (A fresh
 ng-objects launch in development mode first tries to evict whatever holds its port, so
 `/launch` alone sometimes clears a half-dead instance — but a truly wedged JVM ignores
-that too, and `kill -9` is the fallback.)
+that too, and `kill -9` is the fallback.) You don't need to ask before killing a wedged
+development JVM; it's part of getting your app running.
 
 ## Validate templates — your highest-value habit
 
