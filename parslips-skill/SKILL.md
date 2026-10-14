@@ -306,11 +306,14 @@ when ambiguous — `{"launched":false,"candidates":[…]}`. Pick an exact name f
 **A JVM the dev server can't reach.** A swap occasionally leaves the JVM holding its port
 but answering nothing, and not reacting to a clean `/stop`. `/stop?force=true` needs a
 registered pid; when there is none (`/status` says `running:false` while the port is
-held), `lsof -nP -iTCP:PORT -sTCP:LISTEN`, `kill -9` the pid, then `/launch`. (A fresh
-ng-objects launch in development mode first tries to evict whatever holds its port, so
-`/launch` alone sometimes clears a half-dead instance — but a truly wedged JVM ignores
-that too, and `kill -9` is the fallback.) You don't need to ask before killing a wedged
-development JVM; it's part of getting your app running.
+held), `lsof -nP -iTCP:PORT -sTCP:LISTEN`, `kill -9` the pid, then `/launch`. A wedged JVM
+you started is yours to kill without asking; someone else's, tell the developer.
+
+**An app started outside `/launch` takes its port by force.** When an ng-objects or
+wonder-slim app finds its port held at startup (launched from Eclipse's Run button, say),
+it stops whatever ng or WO app holds it and kills one that hangs. That's the developer's
+own choice of tool. `/launch` never gets there: it picks a free port first. So launch
+through the dev server, never by running the app's main class yourself.
 
 ## Validate templates — your highest-value habit
 
