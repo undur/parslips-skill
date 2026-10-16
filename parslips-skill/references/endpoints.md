@@ -544,6 +544,8 @@ curl -s '.../eval?reset=true&snippet=…'      # discard the persistent session 
 
 - Snippet from the `snippet` param or the request body **as `text/plain`** — a
   form-encoded body (curl's `--data` default) is split on `=` and `&`, which mangles Java.
+- The value is the snippet's last expression: end with it (`var n = q.size(); n`). A
+  top-level `return x;` isn't an error but comes back with an empty `value`.
 - The session persists (`var ctx = …` then use `ctx`); `reset=true` wipes it. Default
   imports: `java.util.*`, `java.util.stream.*`, `java.time.*`.
 - `System.out`/`err` go to the app console — read them via the log endpoint.
